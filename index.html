@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Logistic Regression - Batch GD Demo + Colab Python Generator</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; max-width:980px; margin:24px auto; padding:18px; color:#111; }
+  h1 { margin:0 0 8px; font-size:20px; }
+  .grid { display:grid; gap:10px; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); margin-bottom:12px; }
+  label { font-size:13px; display:block; margin-bottom:4px; }
+  input[type="text"], input[type="number"], textarea, select { width:100%; padding:8px; font-size:14px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; }
+  textarea { min-height:140px; font-family: monospace; }
+  .controls { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+  button { padding:8px 12px; font-size:14px; border-radius:8px; border:0; background:#0b63d6; color:white; cursor:pointer; }
+  button:disabled { opacity:0.6; cursor:not-allowed; }
+  .output { background:#111; color:#0f0; padding:12px; border-radius:8px; white-space:pre-wrap; font-family: monospace; min-height:220px; overflow:auto; }
+  .small { font-size:13px; color:#444; margin-top:6px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .file { margin-top:6px; }
+  footer { margin-top:18px; font-size:13px; color:#555; }
+  .genbox { margin-top:12px; display:grid; gap:8px; grid-template-columns: 1fr 220px; align-items:start; }
+  .scriptArea { min-height:260px; font-family: monospace; white-space: pre; overflow:auto; }
+</style>
+</head>
+<body>
+  <h1>Logistic Regression (sigmoid) — Batch Gradient Descent demo</h1>
+  <p class="small">Drop data or paste like: <code>x y</code> pairs (space/comma/newline-separated). Example you provided is preloaded.</p>
+
+  <div class="grid">
+    <div>
+      <label>Initial w0</label>
+      <input id="w0" type="number" step="any" value="-2.0" />
+    </div>
+    <div>
+      <label>Initial w1</label>
+      <input id="w1" type="number" step="any" value="4.0" />
+    </div>
+    <div>
+      <label>Learning rate (η)</label>
+      <input id="lr" type="number" step="any" value="0.2" />
+    </div>
+    <div>
+      <label>Epochs</label>
+      <input id="epochs" type="number" step="1" value="10" min="1" />
+    </div>
+  </div>
+
+  <div class="row">
+    <div style="flex:1">
+      <label>Paste data (two columns: x y). Accepts spaces, commas or newlines. Can include a header.</label>
+      <textarea id="dataInput" placeholder="x y\n0.05 0\n0.1 0 ..."></textarea>
+    </div>
+    <div style="width:220px;">
+      <label>Or upload file (CSV / TXT)</label>
+      <input id="fileInput" class="file" type="file" accept=".csv,.txt" />
+      <div class="small">If you upload a file it will replace the paste box contents.</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="runBtn">Run Training</button>
+    <button id="clearBtn">Clear Output</button>
+    <div style="margin-left:auto" class="small">Output precision: 6 decimals</div>
+  </div>
+
+  <div class="output" id="output"></div>
+
+  <section style="margin-top:18px">
+    <h2 style="font-size:16px; margin:0 0 8px;">Generate Python (Colab-ready)</h2>
+    <div class="small">This will generate a step-by-step Python script embedding the current dataset and hyperparameters. You can copy it, download a <code>.py</code>, or paste into Google Colab.</div>
+
+    <div class="genbox">
+      <div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button id="genPyBtn">Generate Python Script</button>
+          <button id="copyPyBtn" disabled>Copy</button>
+          <button id="downloadPyBtn" disabled>Download .py</button>
+        </div>
+
+        <div style="margin-top:8px;">
+          <label>Python script (preview)</label>
+          <textarea id="pyArea" class="scriptArea" readonly></textarea>
+        </div>
+      </div>
+
+      <div style="padding-left:12px">
+        <label>Quick actions</label>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px">
+          <button id="openColabBtn" disabled>Open blank Colab (then paste)</button>
+          <button id="loadExample">Load Example Data</button>
+          <div class="small">Tip: Click "Open blank Colab" then paste the generated code into a new cell (or just copy/paste).</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    The Python script prints logs exactly like:
+    <br><code>Start: w0=-2.000000, w1=4.000000</code><br>
+    <code>Epoch 1: loss=0.331375, grad0=-0.093039, grad1=-0.093528, w0->-1.981392, w1->4.018706</code>
+  </footer>
+
+<script>
+// ---------- parsing & math (same as earlier) ----------
+function parseXY(text) {
+  const lines = text.trim().split(/\r?\n/).map(l => l.trim()).filter(l => l.length>0);
+  const rows = [];
+  for (let i=0;i<lines.length;i++){
+    const line = lines[i];
+    const parts = line.split(/[\s,]+/).filter(p=>p.length>0);
+    if (i===0 && parts.length>=2) {
+      const h0 = parts[0].toLowerCase();
+      const h1 = parts[1].toLowerCase();
+      if ((h0==='x' || h0==='x1') && (h1==='y' || h1==='label')) continue;
+    }
+    if (parts.length===1) {
+      const tokens = text.trim().split(/[\s,]+/).filter(t=>t.length>0);
+      if (tokens.length % 2 === 0) {
+        for (let k=0;k<tokens.length;k+=2) rows.push([parseFloat(tokens[k]), parseFloat(tokens[k+1])]);
+        return rows;
+      } else continue;
+    }
+    if (parts.length >= 2) {
+      const x = parseFloat(parts[0]);
+      const y = parseFloat(parts[1]);
+      if (Number.isFinite(x) && Number.isFinite(y)) rows.push([x,y]);
+    }
+  }
+  return rows;
+}
+function sigmoid(z){ return 1/(1+Math.exp(-z)); }
+function computeLoss(rows, w0, w1) {
+  const N = rows.length;
+  let s = 0;
+  for (const [x,y] of rows) {
+    const z = w0 + w1 * x;
+    const yhat = sigmoid(z);
+    const eps = 1e-15;
+    const yh = Math.min(Math.max(yhat, eps), 1-eps);
+    s += (y * Math.log(yh) + (1-y) * Math.log(1-yh));
+  }
+  return -s / N;
+}
+function computeGrads(rows, w0, w1) {
+  const N = rows.length;
+  let g0 = 0, g1 = 0;
+  for (const [x,y] of rows) {
+    const z = w0 + w1 * x;
+    const yhat = sigmoid(z);
+    const err = yhat - y;
+    g0 += err;
+    g1 += err * x;
+  }
+  return { g0: g0 / N, g1: g1 / N };
+}
+function fmt(n){ return (Number.isFinite(n) ? n.toFixed(6) : 'NaN'); }
+
+// ---------- UI wiring ----------
+document.getElementById('loadExample').addEventListener('click', ()=>{
+  const txt = [
+    'x1 y',
+    '0.05 0',
+    '0.1 0',
+    '0.2 0',
+    '0.3 0',
+    '0.4 1',
+    '0.55 1',
+    '0.7 1',
+    '0.85 1',
+    '0.95 1',
+    '1.1 1'
+  ].join('\n');
+  document.getElementById('dataInput').value = txt;
+});
+
+document.getElementById('fileInput').addEventListener('change', async (ev)=>{
+  const fi = ev.target.files[0];
+  if (!fi) return;
+  const text = await fi.text();
+  document.getElementById('dataInput').value = text;
+});
+
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  document.getElementById('output').textContent = '';
+});
+
+document.getElementById('runBtn').addEventListener('click', ()=>{
+  const outEl = document.getElementById('output');
+  outEl.textContent = '';
+  const w0 = parseFloat(document.getElementById('w0').value);
+  const w1 = parseFloat(document.getElementById('w1').value);
+  const lr = parseFloat(document.getElementById('lr').value);
+  const epochs = parseInt(document.getElementById('epochs').value,10);
+
+  if (!Number.isFinite(w0) || !Number.isFinite(w1) || !Number.isFinite(lr) || !(epochs>0)) {
+    alert('Please enter valid numeric hyperparameters.');
+    return;
+  }
+
+  const raw = document.getElementById('dataInput').value;
+  const rows = parseXY(raw);
+  if (rows.length === 0) {
+    alert('No data parsed. Please paste or upload a two-column dataset (x y).');
+    return;
+  }
+
+  outEl.textContent += `Start: w0=${fmt(w0)}, w1=${fmt(w1)}\n`;
+
+  let cw0 = w0, cw1 = w1;
+  for (let e=1;e<=epochs;e++){
+    const loss = computeLoss(rows, cw0, cw1);
+    const grads = computeGrads(rows, cw0, cw1);
+    const g0f = fmt(grads.g0);
+    const g1f = fmt(grads.g1);
+    const new_w0 = cw0 - lr * grads.g0;
+    const new_w1 = cw1 - lr * grads.g1;
+    outEl.textContent += `Epoch ${e}: loss=${fmt(loss)}, grad0=${g0f}, grad1=${g1f}, w0->${fmt(new_w0)}, w1->${fmt(new_w1)}\n`;
+    cw0 = new_w0; cw1 = new_w1;
+  }
+  outEl.textContent += `End: w0=${fmt(cw0)}, w1=${fmt(cw1)}\n`;
+});
+
+// ---------- Python generator ----------
+function generatePythonScriptText(rows, init_w0, init_w1, lr, epochs) {
+  // prepare a Python list literal for data
+  const dataLines = rows.map(r => `    [${r[0]}, ${r[1]}],`).join('\n');
+  // Python script content
+  const py = `# Logistic regression (sigmoid) - batch gradient descent
+# Generated by the web app. Paste this into Google Colab or run locally.
+import math
+
+# Dataset: list of [x, y]
+data = [
+${dataLines}
+]
+
+# Hyperparameters
+w0 = ${init_w0}
+w1 = ${init_w1}
+lr = ${lr}
+epochs = ${epochs}
+
+def sigmoid(z):
+    return 1.0 / (1.0 + math.exp(-z))
+
+def compute_loss(rows, w0, w1):
+    N = len(rows)
+    s = 0.0
+    eps = 1e-15
+    for x, y in rows:
+        z = w0 + w1 * x
+        yhat = sigmoid(z)
+        yh = min(max(yhat, eps), 1 - eps)
+        s += (y * math.log(yh) + (1 - y) * math.log(1 - yh))
+    return -s / N
+
+def compute_grads(rows, w0, w1):
+    N = len(rows)
+    g0 = 0.0
+    g1 = 0.0
+    for x, y in rows:
+        z = w0 + w1 * x
+        yhat = sigmoid(z)
+        err = yhat - y
+        g0 += err
+        g1 += err * x
+    return g0 / N, g1 / N
+
+def fmt(x):
+    return f\"{x:.6f}\"
+
+# Print start
+print(f\"Start: w0={fmt(w0)}, w1={fmt(w1)}\")
+
+cw0 = w0
+cw1 = w1
+for e in range(1, epochs + 1):
+    loss = compute_loss(data, cw0, cw1)
+    g0, g1 = compute_grads(data, cw0, cw1)
+    new_w0 = cw0 - lr * g0
+    new_w1 = cw1 - lr * g1
+    print(f\"Epoch {e}: loss={fmt(loss)}, grad0={fmt(g0)}, grad1={fmt(g1)}, w0->{fmt(new_w0)}, w1->{fmt(new_w1)}\")
+    cw0, cw1 = new_w0, new_w1
+
+print(f\"End: w0={fmt(cw0)}, w1={fmt(cw1)}\")`;
+
+  return py;
+}
+
+document.getElementById('genPyBtn').addEventListener('click', ()=>{
+  const raw = document.getElementById('dataInput').value;
+  const rows = parseXY(raw);
+  if (rows.length === 0) {
+    alert('No data parsed. Please paste or upload a two-column dataset (x y).');
+    return;
+  }
+  const w0 = parseFloat(document.getElementById('w0').value);
+  const w1 = parseFloat(document.getElementById('w1').value);
+  const lr = parseFloat(document.getElementById('lr').value);
+  const epochs = parseInt(document.getElementById('epochs').value,10);
+  if (!Number.isFinite(w0) || !Number.isFinite(w1) || !Number.isFinite(lr) || !(epochs>0)) {
+    alert('Please enter valid numeric hyperparameters.');
+    return;
+  }
+
+  const py = generatePythonScriptText(rows, w0, w1, lr, epochs);
+  const area = document.getElementById('pyArea');
+  area.value = py;
+
+  // enable copy / download / open colab buttons
+  document.getElementById('copyPyBtn').disabled = false;
+  document.getElementById('downloadPyBtn').disabled = false;
+  document.getElementById('openColabBtn').disabled = false;
+});
+
+document.getElementById('copyPyBtn').addEventListener('click', async ()=>{
+  const py = document.getElementById('pyArea').value;
+  try {
+    await navigator.clipboard.writeText(py);
+    alert('Python script copied to clipboard. Paste into Colab or a .py file.');
+  } catch (e) {
+    alert('Copy failed. You can manually select and copy the script.');
+  }
+});
+
+document.getElementById('downloadPyBtn').addEventListener('click', ()=>{
+  const py = document.getElementById('pyArea').value;
+  const blob = new Blob([py], { type: 'text/x-python' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'logistic_batch_gd.py';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('openColabBtn').addEventListener('click', ()=>{
+  // open a blank Colab; user must paste the generated code manually.
+  window.open('https://colab.research.google.com/', '_blank');
+});
+</script>
+</body>
+</html>
